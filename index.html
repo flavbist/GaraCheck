@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GARACHECK by Febys - Analisi Bandi Multi-File</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Utilizzo della versione legacy di PDF.js per massima compatibilità -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&display=swap');
@@ -113,7 +114,10 @@
     </div>
 
     <script>
+        // Configurazione robusta del worker per GitHub Pages e altri ambienti statici
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
         const apiKey = ""; 
         const fileInput = document.getElementById('file-input');
         const dropZone = document.getElementById('drop-zone');
@@ -147,15 +151,15 @@
             try {
                 let fullAggregatedText = "";
                 
-                // Iteriamo su TUTTI i file caricati
                 for (let i = 0; i < uploadedFiles.length; i++) {
                     const f = uploadedFiles[i];
                     loadingText.innerText = `Lettura file ${i+1} di ${uploadedFiles.length}: ${f.name}`;
                     
                     if (f.type === "application/pdf") {
                         const arrayBuffer = await f.arrayBuffer();
-                        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                        // Leggiamo fino a 50 pagine per documento per coprire i capitolati lunghi
+                        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                        const pdf = await loadingTask.promise;
+                        
                         const pagesToRead = Math.min(pdf.numPages, 50);
                         for (let j = 1; j <= pagesToRead; j++) {
                             const page = await pdf.getPage(j);
@@ -194,12 +198,14 @@
                     })
                 });
 
+                if (!response.ok) throw new Error("Errore API Gemini");
+
                 const json = await response.json();
                 garaData = JSON.parse(json.candidates[0].content.parts[0].text);
                 renderResults(garaData);
             } catch (err) {
-                console.error(err);
-                alert("Errore nell'elaborazione dei file. Controlla che i PDF non siano protetti da password.");
+                console.error("DEBUG ERROR:", err);
+                alert("Errore tecnico: " + err.message + "\nAssicurati che i PDF non siano protetti e che la connessione sia attiva.");
                 location.reload();
             }
         };
@@ -236,7 +242,6 @@
                 </div>
             `).join('');
 
-            // Copia negli appunti
             document.getElementById('copy-btn').onclick = () => {
                 let txt = `ANALISI GARA MULTI-FILE\nOGGETTO: ${data.titolo}\nSCADENZA: ${data.scadenza}\n\nLOTTI:\n`;
                 data.lotti.forEach(l => txt += `- ${l.id}: ${l.desc} (${l.importo})\n`);
@@ -273,19 +278,13 @@
             <body>
                 <div class="h1">GARACHECK Technical Report</div>
                 <div class="meta">Analisi Cross-Documentale ST-2026 | Sistema di supporto decisionale</div>
-                
                 <div style="font-size: 14pt; font-weight: bold; margin-bottom: 10pt;">${data.titolo}</div>
-                
-                <div class="dead">
-                    TERMINE RICEVIMENTO OFFERTE: ${data.scadenza}
-                </div>
-
+                <div class="dead">TERMINE RICEVIMENTO OFFERTE: ${data.scadenza}</div>
                 <h3>QUADRO ECONOMICO</h3>
                 <table>
                     <thead><tr><th>LOTTO</th><th>OGGETTO</th><th>IMPORTO</th></tr></thead>
                     <tbody>${data.lotti.map(l => `<tr><td>${l.id}</td><td>${l.desc}</td><td>${l.importo}</td></tr>`).join('')}</tbody>
                 </table>
-
                 <h3>CHECKLIST DOCUMENTI RICHIESTI</h3>
                 ${data.buste.map(b => `
                     <div class="busta">Busta ${b.nome}</div>
